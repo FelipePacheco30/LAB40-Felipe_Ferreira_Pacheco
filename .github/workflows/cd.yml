@@ -1,0 +1,43 @@
+name: CD simulado
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  delivery-record:
+    name: Gerar registro de entrega
+    runs-on: ubuntu-latest
+    steps:
+      - name: Obter código integrado
+        uses: actions/checkout@v4
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Instalar dependências de produção
+        run: npm ci --omit=dev
+      - name: Construir imagem de entrega
+        run: docker build --pull -t lab40:${{ github.sha }} .
+      - name: Criar artefatos de entrega
+        run: |
+          docker save lab40:${{ github.sha }} -o lab40-delivery-image.tar
+          {
+            echo "repository=${{ github.repository }}"
+            echo "ref=${{ github.ref }}"
+            echo "sha=${{ github.sha }}"
+            echo "image=lab40:${{ github.sha }}"
+            echo "generated_at=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          } > deployment-record.txt
+      - name: Publicar artefato do CD simulado
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab40-delivery-record
+          path: |
+            lab40-delivery-image.tar
+            deployment-record.txt
+          retention-days: 14
