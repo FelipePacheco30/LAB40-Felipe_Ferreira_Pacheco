@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validar aplicação
+    runs-on: ubuntu-latest
+    steps:
+      - name: Obter código
+        uses: actions/checkout@v4
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Instalar dependências reproduzíveis
+        run: npm ci
+      - name: Análise estática
+        run: npm run lint
+      - name: Testes automatizados
+        run: npm test
+      - name: Auditoria de dependências
+        run: npm audit --audit-level=high
+      - name: Smoke test HTTP
+        run: npm run test:smoke
+      - name: Construir imagem Docker
+        run: docker build --pull -t lab40:${{ github.sha }} .
+      - name: Validar aplicação no container
+        run: |
+          docker run -d --name lab40-ci -p 3000:3000 lab40:${{ github.sha }}
+          for attempt in {1..15}; do curl --fail http://localhost:3000/health && break || sleep 1; done
+          curl --fail -X POST http://localhost:3000/api/features/19 -H "Content-Type: application/json" -d '{"valores":[8,2,5]}'
+          docker logs lab40-ci
+      - name: Exportar imagem validada
+        if: success()
+        run: docker save lab40:${{ github.sha }} | gzip > lab40-image.tar.gz
+      - name: Publicar imagem como artefato do CI
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab40-ci-image
+          path: lab40-image.tar.gz
+          retention-days: 7
